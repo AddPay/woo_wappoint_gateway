@@ -129,9 +129,12 @@ class WCWPGW_Gateway extends WC_Payment_Gateway
 
         // $notify_url = str_replace('https:', 'http:', add_query_arg('wc-api', 'WCWPGW_Gateway', home_url('/')));
         $return_url = str_replace('https:', 'http:', home_url('/') . 'wc-api/wcwpgw_gateway/');
+        $timestamp = intval(microtime(true));
+        $reference_long = "wcwpgw-" . $order->get_order_number() . "-" . $timestamp;
+        $reference = substr($reference_long, 0, 24); // ensure that it is less than 24 characters as is required by Addpay API
 
         $this->payload = json_encode(array(
-            'reference'   => $order->get_order_number(),
+            'reference'   => $reference,
             'description' => get_bloginfo('name'),
             'customer' => array(
                 'firstname' => self::wcwpgw_get_order_prop($order, 'billing_first_name'),
