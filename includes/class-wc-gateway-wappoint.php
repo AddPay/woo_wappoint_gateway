@@ -1,6 +1,6 @@
 <?php
 
-define('WCWPGW_VERSION', '2.5.15');
+define('WCWPGW_VERSION', '2.5.21');
 
 class WCWPGW_Gateway extends WC_Payment_Gateway
 {
@@ -25,7 +25,7 @@ class WCWPGW_Gateway extends WC_Payment_Gateway
         $this->method_title       = __('WapPoint', 'wcagw-payment-gateway');
 
         $this->method_description = sprintf(__('WapPoint works by sending the user to %1$sWapPoint%2$s to enter their payment information.', 'wcagw-payment-gateway'), '<a href="http://wappoint.co.za/">', '</a>');
-        $this->icon               = WP_PLUGIN_URL . '/' . plugin_basename(dirname(dirname(__FILE__))) . '/assets/images/logo.png';
+        $this->icon               = WP_PLUGIN_URL . '/' . plugin_basename(dirname(dirname(__FILE__))) . '/logo.png';
         $this->debug_email        = get_option('admin_email');
 
         $this->supports = array(
@@ -37,18 +37,11 @@ class WCWPGW_Gateway extends WC_Payment_Gateway
 
         $this->client_id            = $this->get_option('client_id');
         $this->client_secret        = $this->get_option('client_secret');
-        $this->environment          = $this->get_option('environment');
         $this->title                = $this->get_option('title');
         $this->description          = $this->get_option('description');
         $this->payment_url          = $this->get_option('payment_url', '');
         $this->enabled              = 'yes';
-
-
-        if ($this->environment == 'yes') {
-            $this->url              = 'https://secure.addpay.co.za/v2/transactions';
-        } else {
-            $this->url              = 'https://secure-test.addpay.co.za/v2/transactions';
-        }
+        $this->url                  = 'https://wappoint.addpay.co.za/v2/transactions';
         
         add_action('woocommerce_update_options_payment_gateways', [$this, 'process_admin_options']);
         add_action('woocommerce_update_options_payment_gateways_wappoint', [$this, 'process_admin_options']);
@@ -100,14 +93,6 @@ class WCWPGW_Gateway extends WC_Payment_Gateway
                 'description' => __('This is the Client Secret generated on the WapPoint merchant console.', 'wcagw-payment-gateway'),
                 'default'     => 'CHANGE ME',
             ),
-            'environment' => array(
-                'title'       => __('Environment', 'wcagw-payment-gateway'),
-                'label'       => __('Live WapPoint API Credentials', 'wcagw-payment-gateway'),
-                'type'        => 'checkbox',
-                'description' => __('This controls whether or not this gateway is using sandbox or live credentials.', 'wcagw-payment-gateway'),
-                'default'     => 'no',
-                'desc_tip'    => true,
-            ),
             'payment_url' => array(
                 'title'       => __('Payment URL', 'wcagw-payment-gateway'),
                 'type'        => 'text',
@@ -130,7 +115,7 @@ class WCWPGW_Gateway extends WC_Payment_Gateway
         // $notify_url = str_replace('https:', 'http:', add_query_arg('wc-api', 'WCWPGW_Gateway', home_url('/')));
         $return_url = str_replace('https:', 'http:', home_url('/') . 'wc-api/wcwpgw_gateway/');
         $timestamp = intval(microtime(true));
-        $reference_long = "wcwpgw-" . $order->get_order_number() . "-" . $timestamp;
+        $reference_long = "wcwp-" . $order->get_order_number() . "-" . $timestamp;
         $reference = substr($reference_long, 0, 24); // ensure that it is less than 24 characters as is required by Addpay API
 
         $this->payload = json_encode(array(
@@ -216,49 +201,52 @@ class WCWPGW_Gateway extends WC_Payment_Gateway
         $cart_url = wc_get_cart_url();
 
         if ($transaction_id) {
-            $this->result = wp_remote_get("{$this->url}/{$transaction_id}", array(
-              'method'       => 'GET',
-              'timeout'      => 45,
-              'redirection'  => 5,
-              'httpversion'  => '1.0',
-              'blocking'     => true,
-              'headers'      => [
-                'Content-Type'  => 'application/json',
-                'accept'        => 'application/json',
-                'Authorization' => 'Token ' . base64_encode("{$this->client_id}:{$this->client_secret}"),
-              ],
-              'cookies'      => array()
-            ));
+            try {
+                $this->result = wp_remote_get("{$this->url}/{$transaction_id}", array(
+                    'method'       => 'GET',
+                    'timeout'      => 45,
+                    'redirection'  => 5,
+                    'httpversion'  => '1.0',
+                    'blocking'     => true,
+                    'headers'      => [
+                        'Content-Type'  => 'application/json',
+                        'accept'        => 'application/json',
+                        'Authorization' => 'Token ' . base64_encode("{$this->client_id}:{$this->client_secret}"),
+                    ],
+                    'cookies'      => array()
+                ));
 
-            $transaction = json_decode($this->result['body'])->data;
-            $order          = new WC_Order($transaction->reference);
-            $redirect = $this->get_return_url($order);
-            $status         = !$status ? $transaction->status : $status;
+                $transaction = json_decode($this->result['body'])->data;
+                $order_id = explode("-", $transaction->reference)[1];
+                $order = new WC_Order($order_id);
+                $redirect = $this->get_return_url($order);
+                $status = !$status ? $transaction->status : $status;
 
-            if ($status == 'COMPLETE') {
-                // if (!isset($_POST['transaction_id'])) {
-                //     wc_add_notice(__('<strong>Payment successfully processed via WapPoint</strong> ', 'woothemes'), 'success');
-                // }
-                $order->update_status('processing');
-                $order->payment_complete();
-                wp_redirect($redirect);
-            } elseif ($status == 'FAILED') {
-                if (!isset($_POST['transaction_id'])) {
-                    $state = ucFirst(strtolower($status));
-
-                    wc_add_notice(__("<strong>Payment {$state}</strong><br/>{$transaction->status_reason}", 'woothemes'), 'error');
+                if ($status == 'COMPLETE') {
+                    $order->update_status('processing');
+                    $order->payment_complete();
+                    $woocommerce->cart->empty_cart();
+                    wp_redirect($redirect);
+                } elseif ($status == 'FAILED') {
+                    if (!isset($_POST['transaction_id'])) {
+                        $state = ucFirst(strtolower($status));
+    
+                        wc_add_notice(__("<strong>Payment {$state}</strong><br/>{$transaction->status_reason}", 'woothemes'), 'error');
+                    }
+    
+                    $order->update_status('failed');
+                    wp_redirect($cart_url);
+                } else if ($status == 'CANCELLED') {
+                    wp_redirect($checkout_url);
+                } else {
+                    if (!isset($_POST['transaction_id'])) {
+                        $state = ucFirst(strtolower($status));
+                        wc_add_notice(__("<strong>Invalid transaction status: {$state}</strong><br/>{$transaction->status_reason}", 'woothemes'), 'error');
+                    }
+                    wp_redirect($cart_url);
                 }
-
-                $order->update_status('failed');
-                wp_redirect($cart_url);
-            } else if ($status == 'CANCELLED') {
-                wp_redirect($checkout_url);
-            } else {
-                if (!isset($_POST['transaction_id'])) {
-                    $state = ucFirst(strtolower($status));
-                    wc_add_notice(__("<strong>Invalid transaction status: {$state}</strong><br/>{$transaction->status_reason}", 'woothemes'), 'error');
-                }
-                wp_redirect($cart_url);
+            } catch (\Throwable $th) {
+                wc_add_notice(__('<strong>An error occurred while processing the transaction response. Please submit a ticket to <a href="https://helpdesk.wappoint.co.za/">WapPoint support</a> with this error message.</strong> ', 'woothemes'), 'error');
             }
         } else {
             if (!isset($_POST['transaction_id'])) {

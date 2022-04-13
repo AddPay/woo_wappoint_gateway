@@ -7,7 +7,7 @@
  * Author URI: https://www.wappoint.co.za/
  * Developer: Richard Slabbert/Stephen Lake
  * Developer URI: https://www.wappoint.co.za/
- * Version: 2.5.14
+ * Version: 2.5.21
  */
 
 if (! defined('ABSPATH')) {
@@ -15,17 +15,17 @@ if (! defined('ABSPATH')) {
 }
 
 // Test to see if WooCommerce is active (including network activated).
-$plugin_path = trailingslashit( WP_PLUGIN_DIR ) . 'woocommerce/woocommerce.php';
+// $plugin_path = trailingslashit( WP_PLUGIN_DIR ) . 'woocommerce/woocommerce.php';
 
-if (
-    in_array( $plugin_path, wp_get_active_and_valid_plugins() )
-    || in_array( $plugin_path, wp_get_active_network_plugins() )
-) {
-    // woocommerce is active
-    add_action('plugins_loaded', 'wcwpgw_init', 0);
-    add_filter('plugin_action_links_' . plugin_basename(__FILE__), 'wcwpgw_plugin_links');
+// if (
+//     in_array( $plugin_path, wp_get_active_and_valid_plugins() )
+//     || in_array( $plugin_path, wp_get_active_network_plugins() )
+// ) {
+//     // woocommerce is active
+//     add_action('plugins_loaded', 'wcwpgw_init', 0);
+//     add_filter('plugin_action_links_' . plugin_basename(__FILE__), 'wcwpgw_plugin_links');
 
-}
+// }
 
 /**
  * Initialize the gateway.
@@ -40,6 +40,7 @@ function wcwpgw_init()
     load_plugin_textdomain('wcagw-payment-gateway', false, trailingslashit(dirname(plugin_basename(__FILE__))));
     add_filter('woocommerce_payment_gateways', 'wcwpgw_add_gateway');
 }
+add_action('plugins_loaded', 'wcwpgw_init', 0);
 
 function wcwpgw_plugin_links($links)
 {
@@ -47,15 +48,15 @@ function wcwpgw_plugin_links($links)
         array(
             'page' => 'wc-settings',
             'tab' => 'checkout',
-            'section' => 'wc_gateway_wappoint',
+            'section' => 'wappoint',
         ),
         admin_url('admin.php')
     );
 
     $plugin_links = array(
         '<a href="' . esc_url($settings_url) . '">' . __('Settings', 'wcagw-payment-gateway') . '</a>',
-        '<a href="https://support.woothemes.com/">' . __('Support', 'wcagw-payment-gateway') . '</a>',
-        '<a href="https://docs.woothemes.com/document/addpay-payment-gateway/">' . __('Docs', 'wcagw-payment-gateway') . '</a>',
+        '<a href="https://wappoint.co.za/contact-us/">' . __('Support', 'wcagw-payment-gateway') . '</a>',
+        '<a href="https://github.com/AddPay/woo_wappoint_gateway">' . __('Docs', 'wcagw-payment-gateway') . '</a>',
     );
 
     return array_merge($plugin_links, $links);
